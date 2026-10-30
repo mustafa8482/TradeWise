@@ -6,7 +6,6 @@ from platformdirs import user_data_dir
 APP_NAME = "TradeWise"
 APP_AUTHOR = "TradeWise"
 
-# Application data directory
 DATA_DIR = Path(user_data_dir(APP_NAME, APP_AUTHOR))
 DATABASE_PATH = DATA_DIR / "tradewise.db"
 
@@ -20,7 +19,6 @@ def get_connection():
 
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
-
     connection.execute("PRAGMA foreign_keys = ON")
 
     return connection
@@ -28,17 +26,16 @@ def get_connection():
 
 def initialize_database():
     """
-    Existing trades table ko safe rakhte hue
-    mistakes table bhi create karta hai.
+    Tables create karta hai aur existing database ko safely update karta hai.
     """
 
     with get_connection() as connection:
 
-        # Existing trades table
         connection.execute("""
             CREATE TABLE IF NOT EXISTS trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 trade_date TEXT NOT NULL,
+                exit_date TEXT,
                 symbol TEXT NOT NULL,
 
                 market_type TEXT NOT NULL
@@ -88,7 +85,18 @@ def initialize_database():
             )
         """)
 
-        # New mistakes table
+        # Existing database mein exit_date missing ho to add karo.
+        columns = connection.execute(
+            "PRAGMA table_info(trades)"
+        ).fetchall()
+
+        column_names = [column["name"] for column in columns]
+
+        if "exit_date" not in column_names:
+            connection.execute(
+                "ALTER TABLE trades ADD COLUMN exit_date TEXT"
+            )
+
         connection.execute("""
             CREATE TABLE IF NOT EXISTS mistakes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -98,6 +98,7 @@ def delete_trade(trade_id: int) -> bool:
 
         return cursor.rowcount > 0
 
+
 def get_trade_statistics() -> dict:
     """Database se dashboard ke liye trading statistics calculate karta hai."""
 
@@ -152,6 +153,7 @@ def get_trade_statistics() -> dict:
         "win_rate": round(win_rate, 2),
     }
 
+
 def get_equity_curve_data() -> list[dict]:
     """Closed trades ka date-wise cumulative net P&L return karta hai."""
 
@@ -197,6 +199,7 @@ def get_equity_curve_data() -> list[dict]:
         })
 
     return equity_data
+
 
 def get_drawdown_statistics() -> dict:
     """Equity curve se drawdown statistics calculate karta hai."""
@@ -253,6 +256,7 @@ def get_drawdown_statistics() -> dict:
             current_drawdown_percent, 2
         ),
     }
+
 
 def get_risk_management_statistics() -> dict:
     """Closed trades se risk management statistics calculate karta hai."""
@@ -357,7 +361,148 @@ def get_risk_management_statistics() -> dict:
     }
 
 
+def close_trade(
+    trade_id: int,
+    exit_price: float,
+    exit_date: str,
+    exit_fees: float = 0.0,
+    other_charges: float = 0.0,
+    closing_notes: str | None = None,
+) -> bool:
+    """Open trade ko close karke closing details database mein save karta hai."""
+
+    if exit_price <= 0:
+        raise ValueError("Exit price zero se greater hona chahiye.")
+
+    with get_connection() as connection:
+        trade = connection.execute(
+            "SELECT status FROM trades WHERE id = ?",
+            (trade_id,),
+        ).fetchone()
+
+        if trade is None:
+            return False
+
+        if trade["status"] != "Open":
+            raise ValueError("Sirf Open trade ko close kar sakte ho.")
+
+        cursor = connection.execute(
+            """
+            UPDATE trades
+            SET
+                exit_price = ?,
+                exit_fees = ?,
+                other_charges = ?,
+                status = 'Closed',
+                exit_date = ?,
+                notes = CASE
+                    WHEN ? IS NOT NULL AND ? != ''
+                    THEN COALESCE(notes, '') ||
+                         CASE WHEN COALESCE(notes, '') = '' THEN '' ELSE '\n' END ||
+                         'Closing Notes: ' || ?
+                    ELSE notes
+                END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'Open'
+            """,
+            (
+                str(exit_price),
+                str(exit_fees),
+                str(other_charges),
+                exit_date,
+                closing_notes,
+                closing_notes,
+                closing_notes,
+                trade_id,
+            ),
+        )
+
+    return cursor.rowcount > 0
 
 
+def get_report_data(start_date: str, end_date: str) -> dict:
+    """Date range ke according trading report generate karta hai."""
 
+    trades = get_all_trades()
 
+    filtered_trades = []
+
+    for trade in trades:
+
+        # Closed trades ke liye exit date, otherwise trade date.
+        report_date = (
+            trade.get("exit_date")
+            if trade.get("status") == "Closed"
+            and trade.get("exit_date")
+            else trade.get("trade_date")
+        )
+
+        # IMPORTANT: Date check loop ke andar hai,
+        # taaki har trade filter ho sake.
+        if report_date and start_date <= report_date <= end_date:
+            filtered_trades.append(trade)
+
+    total_trades = len(filtered_trades)
+
+    closed_trades = [
+        trade for trade in filtered_trades
+        if trade.get("status") == "Closed"
+        and trade.get("exit_price") is not None
+    ]
+
+    winning_trades = 0
+    losing_trades = 0
+    total_pnl = 0.0
+
+    for trade in closed_trades:
+
+        entry = float(trade["entry_price"])
+        exit_price = float(trade["exit_price"])
+        quantity = float(trade["quantity"])
+        multiplier = float(trade.get("multiplier") or 1)
+
+        if trade["direction"] == "Short":
+            gross_pnl = (
+                entry - exit_price
+            ) * quantity * multiplier
+        else:
+            gross_pnl = (
+                exit_price - entry
+            ) * quantity * multiplier
+
+        charges = (
+            float(trade.get("entry_fees") or 0)
+            + float(trade.get("exit_fees") or 0)
+            + float(trade.get("other_charges") or 0)
+        )
+
+        net_pnl = gross_pnl - charges
+        total_pnl += net_pnl
+
+        if net_pnl > 0:
+            winning_trades += 1
+        elif net_pnl < 0:
+            losing_trades += 1
+
+    closed_count = len(closed_trades)
+
+    win_rate = (
+        winning_trades / closed_count * 100
+        if closed_count else 0
+    )
+
+    average_pnl = (
+        total_pnl / closed_count
+        if closed_count else 0
+    )
+
+    return {
+        "trades": filtered_trades,
+        "total_trades": total_trades,
+        "closed_trades": closed_count,
+        "winning_trades": winning_trades,
+        "losing_trades": losing_trades,
+        "net_pnl": round(total_pnl, 2),
+        "win_rate": round(win_rate, 2),
+        "average_pnl": round(average_pnl, 2),
+    }

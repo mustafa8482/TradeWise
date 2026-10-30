@@ -106,7 +106,7 @@ TradeWise/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/TradeWise.git
+git clone https://github.com/mustafa8482/TradeWise
 ```
 
 ### 2. Navigate to Project Folder

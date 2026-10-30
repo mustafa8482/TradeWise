@@ -13,9 +13,21 @@ from PySide6.QtWidgets import (
     QWidget,
     QStackedWidget,
     QScrollArea,
+    QGridLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
 )
 
-from services.trade_service import (get_trade_statistics,get_equity_curve_data,get_drawdown_statistics,get_risk_management_statistics)
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+
+from services.trade_service import (
+    get_trade_statistics,
+    get_equity_curve_data,
+    get_drawdown_statistics,
+    get_risk_management_statistics,
+)
 
 from ui.pages.add_trade_page import AddTradePage
 from ui.pages.trade_journal_page import TradeJournalPage
@@ -25,59 +37,97 @@ from ui.pages.trading_psychology_page import TradingPsychologyPage
 from ui.pages.strategy_analysis_page import StrategyAnalysisPage
 from ui.pages.mistake_journal_page import MistakeJournalPage
 from ui.pages.mistake_analytics_page import MistakeAnalyticsPage
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from ui.pages.reports_page import ReportsPage
+from services.trade_service import (
+    get_trade_statistics,
+    get_equity_curve_data,
+    get_drawdown_statistics,
+    get_risk_management_statistics,
+    get_all_trades,
+)
+
+
+# =========================================================
+# EQUITY CURVE CHART
+# =========================================================
 
 class EquityCurveChart(FigureCanvasQTAgg):
 
     def __init__(self, parent=None):
-        self.figure = Figure(figsize=(8, 3), facecolor="#111C30")
+        self.figure = Figure(
+            figsize=(10, 4),
+            facecolor="#111827"
+        )
+
         self.axes = self.figure.add_subplot(111)
 
         super().__init__(self.figure)
         self.setParent(parent)
 
-        self.setMinimumHeight(300)
+        self.setMinimumHeight(340)
 
         self.figure.subplots_adjust(
-            left=0.10,
-            right=0.97,
-            top=0.90,
+            left=0.09,
+            right=0.98,
+            top=0.88,
             bottom=0.20
         )
 
     def plot_data(self, data):
+
         self.axes.clear()
-        self.axes.set_facecolor("#111C30")
+        self.axes.set_facecolor("#111827")
 
         if not data:
+
             self.axes.text(
-                0.5, 0.5,
+                0.5,
+                0.5,
                 "No closed trades available",
                 color="#94A3B8",
                 ha="center",
                 va="center",
-                transform=self.axes.transAxes
+                transform=self.axes.transAxes,
+                fontsize=12
             )
+
         else:
+
             dates = [item["date"] for item in data]
             equity = [item["equity"] for item in data]
 
+            positive = equity[-1] >= 0
+
+            line_color = "#22C55E" if positive else "#EF4444"
+
+            x_values = range(len(equity))
+
             self.axes.plot(
-                range(len(equity)),
+                x_values,
                 equity,
-                linewidth=2,
+                color=line_color,
+                linewidth=2.5,
                 marker="o",
                 markersize=4
             )
 
             self.axes.fill_between(
-                range(len(equity)),
+                x_values,
                 equity,
-                alpha=0.12
+                0,
+                color=line_color,
+                alpha=0.10
             )
 
-            self.axes.set_xticks(range(len(dates)))
+            self.axes.axhline(
+                0,
+                color="#475569",
+                linewidth=0.8,
+                linestyle="--"
+            )
+
+            self.axes.set_xticks(list(x_values))
+
             self.axes.set_xticklabels(
                 dates,
                 rotation=30,
@@ -88,68 +138,109 @@ class EquityCurveChart(FigureCanvasQTAgg):
 
         self.axes.set_title(
             "Cumulative Net P&L",
-            color="#F8FAFC"
+            color="#F8FAFC",
+            fontsize=14,
+            fontweight="bold",
+            loc="left",
+            pad=15
         )
 
-        self.axes.set_ylabel("Equity (₹)", color="#94A3B8")
-        self.axes.tick_params(axis="y", colors="#94A3B8")
+        self.axes.set_ylabel(
+            "Equity (₹)",
+            color="#94A3B8"
+        )
+
+        self.axes.tick_params(
+            axis="y",
+            colors="#94A3B8"
+        )
+
+        self.axes.tick_params(
+            axis="x",
+            colors="#94A3B8"
+        )
 
         for spine in self.axes.spines.values():
-            spine.set_color("#263247")
+            spine.set_color("#263449")
 
-        self.axes.grid(True, alpha=0.15, linestyle="--")
+        self.axes.grid(
+            True,
+            color="#334155",
+            alpha=0.35,
+            linestyle="--"
+        )
 
         self.draw()
 
 
+# =========================================================
+# TRADEWISE MAIN APPLICATION
+# =========================================================
+
 class TradeWiseApp(QMainWindow):
 
     def __init__(self):
+
         super().__init__()
 
-        self.setWindowTitle("TradeWise | Trading Journal")
-        self.resize(1250, 780)
-        self.setMinimumSize(950, 600)
+        self.setWindowTitle("TradeWise | Professional Trading Journal")
+
+        self.resize(1450, 900)
+        self.setMinimumSize(1100, 700)
 
         self.stat_labels = {}
+        self.drawdown_labels = {}
+        self.risk_labels = {}
+        self.nav_buttons = {}
+        self.placeholder_pages = {}
 
         self.setup_ui()
         self.refresh_dashboard()
 
+    # =====================================================
+    # UI SETUP
+    # =====================================================
+
     def setup_ui(self):
+
         central_widget = QWidget()
         central_widget.setObjectName("centralWidget")
+
         self.setCentralWidget(central_widget)
 
         main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Sidebar
+        # SIDEBAR
+
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(230)
+        sidebar.setFixedWidth(245)
 
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(18, 24, 18, 20)
-        sidebar_layout.setSpacing(10)
+
+        sidebar_layout.setContentsMargins(
+            18, 28, 18, 20
+        )
+
+        sidebar_layout.setSpacing(8)
 
         logo = QLabel("TradeWise")
         logo.setObjectName("logo")
 
-        subtitle = QLabel("TRADING JOURNAL")
+        subtitle = QLabel("PROFESSIONAL TRADING JOURNAL")
         subtitle.setObjectName("sidebarSubtitle")
 
         sidebar_layout.addWidget(logo)
         sidebar_layout.addWidget(subtitle)
-        sidebar_layout.addSpacing(25)
 
-        self.nav_buttons = []
+        sidebar_layout.addSpacing(30)
 
         navigation_items = [
             "Dashboard",
-            "Trade Journal",
             "Add Trade",
+            "Trade Journal",
             "Trading Calendar",
             "Performance Analytics",
             "Trading Psychology",
@@ -160,72 +251,112 @@ class TradeWiseApp(QMainWindow):
             "Settings & Backup",
         ]
 
-        for index, item in enumerate(navigation_items):
+        for item in navigation_items:
+
             button = QPushButton(item)
+
             button.setObjectName("navButton")
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setCursor(
+                Qt.CursorShape.PointingHandCursor
+            )
+
             button.setCheckable(True)
 
-            if index == 0:
-                button.setChecked(True)
-
             button.clicked.connect(
-                lambda checked=False, name=item: self.select_page(name)
+                lambda checked=False, name=item:
+                self.select_page(name)
             )
 
             sidebar_layout.addWidget(button)
-            self.nav_buttons.append(button)
+
+            self.nav_buttons[item] = button
+
+        self.nav_buttons["Dashboard"].setChecked(True)
 
         sidebar_layout.addStretch()
 
-        version_label = QLabel("TradeWise v0.1.0")
-        version_label.setObjectName("versionLabel")
-        sidebar_layout.addWidget(version_label)
+        version = QLabel("TRADEWISE  •  VERSION 0.2")
+        version.setObjectName("versionLabel")
 
-        # Main content
+        sidebar_layout.addWidget(version)
+
+        # MAIN CONTENT
+
         content = QWidget()
         content.setObjectName("content")
 
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(28, 24, 28, 24)
-        content_layout.setSpacing(18)
+
+        content_layout.setContentsMargins(
+            30, 25, 30, 20
+        )
+
+        content_layout.setSpacing(20)
+
+        # HEADER
 
         toolbar = QHBoxLayout()
 
         self.page_title = QLabel("Dashboard")
         self.page_title.setObjectName("pageTitle")
 
-        toolbar_status = QLabel("● DATABASE CONNECTED")
-        toolbar_status.setObjectName("statusLabel")
+        status = QLabel("● DATABASE CONNECTED")
+        status.setObjectName("statusLabel")
 
         toolbar.addWidget(self.page_title)
         toolbar.addStretch()
-        toolbar.addWidget(toolbar_status)
+        toolbar.addWidget(status)
 
         content_layout.addLayout(toolbar)
 
-        # Stacked pages
+        # STACKED WIDGET
+
         self.pages = QStackedWidget()
 
-        # 0: Dashboard
+        # DASHBOARD PAGE
+
         dashboard_page = QWidget()
+
         dashboard_layout = QVBoxLayout(dashboard_page)
+
         dashboard_layout.setContentsMargins(0, 0, 0, 0)
-        dashboard_layout.setSpacing(18)
+        dashboard_layout.setSpacing(22)
+
+        # SCROLL AREA
+        # Dashboard is added only once to QStackedWidget.
+
+        dashboard_scroll = QScrollArea()
+
+        dashboard_scroll.setWidgetResizable(True)
+        dashboard_scroll.setFrameShape(
+            QFrame.Shape.NoFrame
+        )
+
+        dashboard_scroll.setWidget(dashboard_page)
+
+        self.pages.addWidget(dashboard_scroll)
+
+        # WELCOME SECTION
 
         welcome_card = QFrame()
         welcome_card.setObjectName("welcomeCard")
 
         welcome_layout = QVBoxLayout(welcome_card)
-        welcome_layout.setContentsMargins(24, 22, 24, 22)
+
+        welcome_layout.setContentsMargins(
+            25, 25, 25, 25
+        )
+
         welcome_layout.setSpacing(10)
 
-        welcome_title = QLabel("Welcome to TradeWise")
+        welcome_title = QLabel("Welcome to TradeWise 👋")
         welcome_title.setObjectName("welcomeTitle")
 
         welcome_description = QLabel(
-            "Your trading performance. Your discipline. Your progress."
+            "Track your trades. Analyze your performance. "
+            "Improve your trading discipline."
         )
+
         welcome_description.setObjectName("description")
 
         welcome_layout.addWidget(welcome_title)
@@ -233,12 +364,15 @@ class TradeWiseApp(QMainWindow):
 
         dashboard_layout.addWidget(welcome_card)
 
+        # PERFORMANCE OVERVIEW
+
         stats_heading = QLabel("Performance Overview")
         stats_heading.setObjectName("sectionTitle")
+
         dashboard_layout.addWidget(stats_heading)
 
-        stats_layout = QHBoxLayout()
-        stats_layout.setSpacing(12)
+        stats_grid = QGridLayout()
+        stats_grid.setSpacing(15)
 
         stats_config = [
             ("total_trades", "TOTAL TRADES", "0"),
@@ -247,103 +381,105 @@ class TradeWiseApp(QMainWindow):
             ("open_trades", "OPEN TRADES", "0"),
         ]
 
-        for key, title, initial_value in stats_config:
-            card = QFrame()
-            card.setObjectName("statCard")
+        for index, (key, title, initial) in enumerate(stats_config):
 
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(15, 18, 15, 18)
-            card_layout.setSpacing(12)
+            card = self.create_stat_card(
+                title,
+                initial
+            )
 
-            title_label = QLabel(title)
-            title_label.setObjectName("statTitle")
+            self.stat_labels[key] = card.findChild(
+                QLabel,
+                "statValue"
+            )
 
-            value_label = QLabel(initial_value)
-            value_label.setObjectName("statValue")
+            stats_grid.addWidget(
+                card,
+                0,
+                index
+            )
 
-            card_layout.addWidget(title_label)
-            card_layout.addWidget(value_label)
+        dashboard_layout.addLayout(stats_grid)
 
-            stats_layout.addWidget(card)
-            self.stat_labels[key] = value_label
+        # EQUITY CURVE
 
-        dashboard_layout.addLayout(stats_layout)
-
-        # Equity Curve Card
         equity_card = QFrame()
-        equity_card.setObjectName("emptyCard")
+        equity_card.setObjectName("panelCard")
 
         equity_layout = QVBoxLayout(equity_card)
-        equity_layout.setContentsMargins(18, 18, 18, 18)
-        equity_layout.setSpacing(10)
+
+        equity_layout.setContentsMargins(
+            22, 20, 22, 20
+        )
+
+        equity_layout.setSpacing(12)
 
         equity_title = QLabel("Equity Curve")
-        equity_title.setObjectName("emptyTitle")
+        equity_title.setObjectName("panelTitle")
 
-        equity_subtitle = QLabel(
-            "Your cumulative trading profit and loss over time."
+        equity_description = QLabel(
+            "Visual representation of your cumulative trading P&L."
         )
-        equity_subtitle.setObjectName("description")
+
+        equity_description.setObjectName("description")
 
         self.equity_chart = EquityCurveChart()
 
         equity_layout.addWidget(equity_title)
-        equity_layout.addWidget(equity_subtitle)
+        equity_layout.addWidget(equity_description)
         equity_layout.addWidget(self.equity_chart)
 
         dashboard_layout.addWidget(equity_card)
 
-        # Drawdown Analytics Section
+        # DRAWDOWN ANALYTICS
+
         drawdown_heading = QLabel("Drawdown Analytics")
         drawdown_heading.setObjectName("sectionTitle")
 
         dashboard_layout.addWidget(drawdown_heading)
 
-        drawdown_layout = QHBoxLayout()
-        drawdown_layout.setSpacing(12)
+        drawdown_grid = QGridLayout()
+        drawdown_grid.setSpacing(15)
 
-        drawdown_config = [        
-    ("peak_equity", "PEAK EQUITY", "₹0.00"),
-    ("current_drawdown", "CURRENT DRAWDOWN", "₹0.00"),
-    ("max_drawdown", "MAX DRAWDOWN", "₹0.00"),
-    ("max_drawdown_percent", "MAX DRAWDOWN %", "0.00%"),
-]
+        drawdown_config = [
+            ("peak_equity", "PEAK EQUITY", "₹0.00"),
+            ("current_drawdown", "CURRENT DRAWDOWN", "₹0.00"),
+            ("max_drawdown", "MAX DRAWDOWN", "₹0.00"),
+            ("max_drawdown_percent", "MAX DRAWDOWN %", "0.00%"),
+        ]
 
-        self.drawdown_labels = {}
+        for index, (key, title, initial) in enumerate(drawdown_config):
 
-        for key, title, initial_value in drawdown_config:
-            card = QFrame()
-            card.setObjectName("statCard")
-        
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(15, 18, 15, 18)
-            card_layout.setSpacing(12)
-        
-            title_label = QLabel(title)
-            title_label.setObjectName("statTitle")
-        
-            value_label = QLabel(initial_value)
-            value_label.setObjectName("statValue")
-        
-            card_layout.addWidget(title_label)
-            card_layout.addWidget(value_label)
-        
-            drawdown_layout.addWidget(card)
-            self.drawdown_labels[key] = value_label
-        
-        dashboard_layout.addLayout(drawdown_layout)
+            card = self.create_stat_card(
+                title,
+                initial
+            )
 
-        # Risk Management Section
+            self.drawdown_labels[key] = card.findChild(
+                QLabel,
+                "statValue"
+            )
+
+            drawdown_grid.addWidget(
+                card,
+                0,
+                index
+            )
+
+        dashboard_layout.addLayout(drawdown_grid)
+
+        # RISK MANAGEMENT
+
         risk_heading = QLabel("Risk Management")
         risk_heading.setObjectName("sectionTitle")
 
         dashboard_layout.addWidget(risk_heading)
 
-        risk_layout = QHBoxLayout()
-        risk_layout.setSpacing(12)
+        risk_grid = QGridLayout()
+        risk_grid.setSpacing(15)
 
         risk_config = [
-            ("average_risk_reward", "AVERAGE RISK / REWARD", "0.00"),
+            ("average_risk_reward", "AVERAGE RISK / REWARD", "0.00 R"),
             ("average_risk", "AVERAGE RISK", "₹0.00"),
             ("largest_winning_trade", "LARGEST WIN", "₹0.00"),
             ("largest_losing_trade", "LARGEST LOSS", "₹0.00"),
@@ -351,142 +487,189 @@ class TradeWiseApp(QMainWindow):
             ("consecutive_losses", "CONSECUTIVE LOSSES", "0"),
         ]
 
-        self.risk_labels = {}
+        for index, (key, title, initial) in enumerate(risk_config):
 
-        for key, title, initial_value in risk_config:
-            card = QFrame()
-            card.setObjectName("statCard")
+            card = self.create_stat_card(
+                title,
+                initial
+            )
 
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(12, 16, 12, 16)
-            card_layout.setSpacing(10)
+            self.risk_labels[key] = card.findChild(
+                QLabel,
+                "statValue"
+            )
 
-            title_label = QLabel(title)
-            title_label.setObjectName("statTitle")
-            title_label.setWordWrap(True)
+            risk_grid.addWidget(
+                card,
+                index // 3,
+                index % 3
+            )
 
-            value_label = QLabel(initial_value)
-            value_label.setObjectName("statValue")
+        dashboard_layout.addLayout(risk_grid)
 
-            card_layout.addWidget(title_label)
-            card_layout.addWidget(value_label)
-
-            risk_layout.addWidget(card)
-            self.risk_labels[key] = value_label
-
-        dashboard_layout.addLayout(risk_layout)
-
-
-
+        # TRADING ACTIVITY
 
         activity_card = QFrame()
-        activity_card.setObjectName("emptyCard")
+        activity_card.setObjectName("panelCard")
 
         activity_layout = QVBoxLayout(activity_card)
-        activity_layout.setContentsMargins(22, 22, 22, 22)
-        activity_layout.setSpacing(10)
 
-        activity_title = QLabel("Trading Journal Overview")
-        activity_title.setObjectName("emptyTitle")
+        activity_layout.setContentsMargins(
+            22, 20, 22, 20
+        )
+
+        activity_title = QLabel("Trading Activity")
+        activity_title.setObjectName("panelTitle")
 
         self.activity_description = QLabel(
             "Your recorded trades will appear here."
         )
+
         self.activity_description.setObjectName("description")
         self.activity_description.setWordWrap(True)
 
         activity_layout.addWidget(activity_title)
-        activity_layout.addWidget(self.activity_description)
+        activity_layout.addWidget(
+            self.activity_description
+        )
 
-        dashboard_layout.addWidget(activity_card, 1)
+        dashboard_layout.addWidget(activity_card)
 
-        self.pages.addWidget(dashboard_page)# Dashboard Scroll Area
-        dashboard_scroll = QScrollArea()
-        dashboard_scroll.setWidgetResizable(True)
-        dashboard_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        dashboard_scroll.setWidget(dashboard_page)
+        # RECENT TRADES TABLE
 
-        self.pages.addWidget(dashboard_scroll)  # Index 0 
+        recent_card = QFrame()
+        recent_card.setObjectName("panelCard")
 
-        # 1: Add Trade
+        recent_layout = QVBoxLayout(recent_card)
+
+        recent_layout.setContentsMargins(22, 20, 22, 20)
+        recent_layout.setSpacing(14)
+
+        recent_title = QLabel("Recent Trades")
+        recent_title.setObjectName("panelTitle")
+
+        recent_description = QLabel(
+            "Your latest 10 recorded trades."
+        )
+        recent_description.setObjectName("description")
+
+        self.recent_trades_table = QTableWidget()
+        self.recent_trades_table.setColumnCount(8)
+
+        self.recent_trades_table.setHorizontalHeaderLabels([
+            "Date",
+            "Symbol",
+            "Market",
+            "Direction",
+            "Entry Price",
+            "Exit Price",
+            "Net P&L",
+            "Status",
+        ])
+
+        self.recent_trades_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+
+        self.recent_trades_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+
+        self.recent_trades_table.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
+
+        self.recent_trades_table.setAlternatingRowColors(True)
+        self.recent_trades_table.verticalHeader().setVisible(False)
+
+        self.recent_trades_table.setMinimumHeight(300)
+
+        header = self.recent_trades_table.horizontalHeader()
+        header.setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+
+        recent_layout.addWidget(recent_title)
+        recent_layout.addWidget(recent_description)
+        recent_layout.addWidget(self.recent_trades_table)
+
+        dashboard_layout.addWidget(recent_card)
+
+        # ADD TRADE PAGE
+
         self.add_trade_page = AddTradePage()
-        self.add_trade_page.trade_saved.connect(self.refresh_dashboard)
 
-        add_trade_scroll = QScrollArea()
-        add_trade_scroll.setWidgetResizable(True)
-        add_trade_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        add_trade_scroll.setWidget(self.add_trade_page)
+        self.add_trade_page.trade_saved.connect(
+            self.refresh_dashboard
+        )
 
-        self.pages.addWidget(add_trade_scroll)
+        self.add_page_with_scroll(self.add_trade_page)
 
-        # 2: Trade Journal
+        # TRADE JOURNAL
+
         self.trade_journal_page = TradeJournalPage()
 
-        trade_journal_scroll = QScrollArea()
-        trade_journal_scroll.setWidgetResizable(True)
-        trade_journal_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        trade_journal_scroll.setWidget(self.trade_journal_page)
+        self.add_page_with_scroll(
+            self.trade_journal_page
+        )
 
-        self.pages.addWidget(trade_journal_scroll)
+        # TRADING CALENDAR
 
-        # 3: Trading Calendar
         self.trading_calendar_page = TradingCalendarPage()
 
-        calendar_scroll = QScrollArea()
-        calendar_scroll.setWidgetResizable(True)
-        calendar_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        calendar_scroll.setWidget(self.trading_calendar_page)
+        self.add_page_with_scroll(
+            self.trading_calendar_page
+        )
 
-        self.pages.addWidget(calendar_scroll)
+        # PERFORMANCE ANALYTICS
 
-        # 4: Performance Analytics
         self.performance_analytics_page = PerformanceAnalyticsPage()
 
-        analytics_scroll = QScrollArea()
-        analytics_scroll.setWidgetResizable(True)
-        analytics_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        analytics_scroll.setWidget(self.performance_analytics_page)
+        self.add_page_with_scroll(
+            self.performance_analytics_page
+        )
 
-        self.pages.addWidget(analytics_scroll)
+        # TRADING PSYCHOLOGY
 
-        # 5: Trading Psychology
         self.trading_psychology_page = TradingPsychologyPage()
 
-        psychology_scroll = QScrollArea()
-        psychology_scroll.setWidgetResizable(True)
-        psychology_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        psychology_scroll.setWidget(self.trading_psychology_page)
+        self.add_page_with_scroll(
+            self.trading_psychology_page
+        )
 
-        self.pages.addWidget(psychology_scroll)
+        # STRATEGY ANALYSIS
 
-        # 6: Strategy Analysis — actual page
         self.strategy_analysis_page = StrategyAnalysisPage()
 
-        strategy_scroll = QScrollArea()
-        strategy_scroll.setWidgetResizable(True)
-        strategy_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        strategy_scroll.setWidget(self.strategy_analysis_page)
+        self.add_page_with_scroll(
+            self.strategy_analysis_page
+        )
 
-        self.pages.addWidget(strategy_scroll)
+        # MISTAKE JOURNAL
 
-        # 7: Mistake Journal
         self.mistake_journal_page = MistakeJournalPage()
 
-        mistake_journal_scroll = QScrollArea()
-        mistake_journal_scroll.setWidgetResizable(True)
-        mistake_journal_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        mistake_journal_scroll.setWidget(self.mistake_journal_page)
+        self.add_page_with_scroll(
+            self.mistake_journal_page
+        )
 
-        self.pages.addWidget(mistake_journal_scroll)
-
-        # 8: Mistake Analytics — actual page
+        # MISTAKE ANALYTICS
 
         self.mistake_analytics_page = MistakeAnalyticsPage()
 
-        self.pages.addWidget(self.mistake_analytics_page)
+        self.add_page_with_scroll(
+            self.mistake_analytics_page
+        )
 
-        # Placeholder pages for features not implemented yet
-        self.placeholder_pages = {}
+        # REPORTS & EXPORT
+
+        self.reports_page = ReportsPage()
+
+        self.reports_page_index = self.add_page_with_scroll(
+            self.reports_page
+        )
+
+        # PLACEHOLDER PAGES
 
         implemented_pages = {
             "Dashboard",
@@ -498,36 +681,47 @@ class TradeWiseApp(QMainWindow):
             "Strategy Analysis",
             "Mistake Journal",
             "Mistake Analytics",
+            "Reports & Export",
         }
 
         for name in navigation_items:
+
             if name in implemented_pages:
                 continue
 
             placeholder = QWidget()
+
             placeholder_layout = QVBoxLayout(placeholder)
-            placeholder_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            placeholder_layout.setAlignment(
+                Qt.AlignmentFlag.AlignCenter
+            )
 
             message = QLabel(f"{name} page")
-            message.setObjectName("emptyTitle")
+            message.setObjectName("panelTitle")
 
             details = QLabel(
-                "This feature will be developed in a future step."
+                "This feature will be developed in a future update."
             )
+
             details.setObjectName("description")
 
             placeholder_layout.addWidget(message)
             placeholder_layout.addWidget(details)
 
-            page_index = self.pages.addWidget(placeholder)
-            self.placeholder_pages[name] = page_index
+            self.placeholder_pages[name] = (
+                self.pages.addWidget(placeholder)
+            )
 
         content_layout.addWidget(self.pages, 1)
 
+        # FOOTER
+
         footer = QLabel(
-            "TradeWise is a journaling and analytics tool. "
+            "TradeWise is a trading journal and analytics tool. "
             "It does not guarantee trading profits."
         )
+
         footer.setObjectName("footer")
 
         content_layout.addWidget(footer)
@@ -535,7 +729,10 @@ class TradeWiseApp(QMainWindow):
         main_layout.addWidget(sidebar)
         main_layout.addWidget(content, 1)
 
+        # GLOBAL STYLESHEET
+
         self.setStyleSheet("""
+
             QMainWindow {
                 background-color: #0B1120;
             }
@@ -547,7 +744,7 @@ class TradeWiseApp(QMainWindow):
 
             QFrame#sidebar {
                 background-color: #0F172A;
-                border-right: 1px solid #263247;
+                border-right: 1px solid #263449;
             }
 
             QWidget#content {
@@ -556,24 +753,23 @@ class TradeWiseApp(QMainWindow):
 
             QLabel#logo {
                 color: #F8FAFC;
-                font-size: 27px;
-                font-weight: 700;
+                font-size: 29px;
+                font-weight: 800;
             }
 
             QLabel#sidebarSubtitle {
                 color: #64748B;
-                font-size: 10px;
+                font-size: 9px;
                 font-weight: 700;
-                letter-spacing: 2px;
             }
 
             QPushButton#navButton {
                 background-color: transparent;
                 color: #94A3B8;
                 border: none;
-                border-radius: 7px;
+                border-radius: 8px;
                 text-align: left;
-                padding: 12px 10px;
+                padding: 13px 12px;
                 font-size: 12px;
             }
 
@@ -585,19 +781,20 @@ class TradeWiseApp(QMainWindow):
             QPushButton#navButton:checked {
                 background-color: #173B35;
                 color: #4ADE80;
-                font-weight: 600;
+                font-weight: 700;
+                border-left: 3px solid #22C55E;
             }
 
             QLabel#versionLabel {
                 color: #64748B;
-                font-size: 11px;
-                padding-top: 12px;
+                font-size: 10px;
+                padding-top: 15px;
             }
 
             QLabel#pageTitle {
                 color: #F8FAFC;
-                font-size: 25px;
-                font-weight: 700;
+                font-size: 27px;
+                font-weight: 800;
             }
 
             QLabel#statusLabel {
@@ -605,21 +802,21 @@ class TradeWiseApp(QMainWindow):
                 background-color: #132D29;
                 border: 1px solid #245044;
                 border-radius: 12px;
-                padding: 8px 12px;
+                padding: 9px 14px;
                 font-size: 10px;
-                font-weight: 600;
+                font-weight: 700;
             }
 
             QFrame#welcomeCard {
                 background-color: #111C30;
-                border: 1px solid #263247;
-                border-radius: 12px;
+                border: 1px solid #263449;
+                border-radius: 14px;
             }
 
             QLabel#welcomeTitle {
                 color: #F8FAFC;
-                font-size: 23px;
-                font-weight: 700;
+                font-size: 25px;
+                font-weight: 800;
             }
 
             QLabel#description {
@@ -629,14 +826,14 @@ class TradeWiseApp(QMainWindow):
 
             QLabel#sectionTitle {
                 color: #F8FAFC;
-                font-size: 17px;
-                font-weight: 600;
+                font-size: 18px;
+                font-weight: 700;
             }
 
             QFrame#statCard {
                 background-color: #111C30;
-                border: 1px solid #263247;
-                border-radius: 12px;
+                border: 1px solid #263449;
+                border-radius: 13px;
             }
 
             QLabel#statTitle {
@@ -647,20 +844,20 @@ class TradeWiseApp(QMainWindow):
 
             QLabel#statValue {
                 color: #F8FAFC;
-                font-size: 22px;
+                font-size: 23px;
+                font-weight: 800;
+            }
+
+            QFrame#panelCard {
+                background-color: #111827;
+                border: 1px solid #263449;
+                border-radius: 14px;
+            }
+
+            QLabel#panelTitle {
+                color: #F8FAFC;
+                font-size: 17px;
                 font-weight: 700;
-            }
-
-            QFrame#emptyCard {
-                background-color: #0F172A;
-                border: 1px solid #263247;
-                border-radius: 12px;
-            }
-
-            QLabel#emptyTitle {
-                color: #E2E8F0;
-                font-size: 18px;
-                font-weight: 600;
             }
 
             QLabel#footer {
@@ -672,15 +869,258 @@ class TradeWiseApp(QMainWindow):
                 background-color: #0B1120;
                 border: none;
             }
+
+            QScrollArea QWidget {
+                background-color: transparent;
+            }
+
+            QScrollBar:vertical {
+                background: #0F172A;
+                width: 9px;
+                margin: 0px;
+            }
+
+            QScrollBar::handle:vertical {
+                background: #334155;
+                border-radius: 4px;
+                min-height: 30px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background: #475569;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+
         """)
 
+    # =====================================================
+    # REUSABLE STAT CARD
+    # =====================================================
+
+    def create_stat_card(self, title, value):
+
+        card = QFrame()
+        card.setObjectName("statCard")
+
+        card.setMinimumHeight(105)
+
+        layout = QVBoxLayout(card)
+
+        layout.setContentsMargins(
+            17, 17, 17, 17
+        )
+
+        layout.setSpacing(12)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("statTitle")
+        title_label.setWordWrap(True)
+
+        value_label = QLabel(value)
+        value_label.setObjectName("statValue")
+
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+
+        return card
+
+    # =====================================================
+    # ADD SCROLLABLE PAGE
+    # =====================================================
+
+    def add_page_with_scroll(self, page):
+
+        scroll = QScrollArea()
+
+        scroll.setWidgetResizable(True)
+
+        scroll.setFrameShape(
+            QFrame.Shape.NoFrame
+        )
+
+        scroll.setWidget(page)
+
+        page_index = self.pages.addWidget(scroll)
+
+        return page_index
+
+    # =====================================================
+    # LOAD RECENT TRADES
+    # =====================================================
+
+    def load_recent_trades(self):
+
+        trades = get_all_trades()
+
+        recent_trades = trades[:10]
+
+        self.recent_trades_table.setRowCount(
+            len(recent_trades)
+        )
+
+        for row, trade in enumerate(recent_trades):
+
+            entry_price = float(
+                trade.get("entry_price") or 0
+            )
+
+            exit_value = trade.get("exit_price")
+
+            if (
+                trade.get("status") == "Closed"
+                and exit_value not in (None, "")
+            ):
+
+                exit_price = float(exit_value)
+
+                quantity = float(
+                    trade.get("quantity") or 0
+                )
+
+                multiplier = float(
+                    trade.get("multiplier") or 1
+                )
+
+                if trade.get("direction") == "Short":
+
+                    gross_pnl = (
+                        entry_price - exit_price
+                    ) * quantity * multiplier
+
+                else:
+
+                    gross_pnl = (
+                        exit_price - entry_price
+                    ) * quantity * multiplier
+
+                charges = (
+                    float(trade.get("entry_fees") or 0)
+                    + float(trade.get("exit_fees") or 0)
+                    + float(trade.get("other_charges") or 0)
+                )
+
+                net_pnl = gross_pnl - charges
+
+                pnl_text = f"₹{net_pnl:,.2f}"
+
+            else:
+
+                exit_price = None
+                net_pnl = None
+                pnl_text = "—"
+
+            values = [
+                str(trade.get("trade_date", "")),
+                str(trade.get("symbol", "")),
+                str(trade.get("market_type", "")),
+                str(trade.get("direction", "")),
+                f"₹{entry_price:,.2f}",
+                (
+                    f"₹{exit_price:,.2f}"
+                    if exit_price is not None
+                    else "—"
+                ),
+                pnl_text,
+                str(trade.get("status", "")),
+            ]
+
+            for column, value in enumerate(values):
+
+                item = QTableWidgetItem(value)
+
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
+
+                if column == 6 and net_pnl is not None:
+
+                    if net_pnl > 0:
+                        item.setForeground(Qt.GlobalColor.green)
+
+                    elif net_pnl < 0:
+                        item.setForeground(Qt.GlobalColor.red)
+
+                if column == 7:
+
+                    if trade.get("status") == "Open":
+                        item.setForeground(Qt.GlobalColor.yellow)
+
+                    elif trade.get("status") == "Closed":
+                        item.setForeground(Qt.GlobalColor.green)
+
+                self.recent_trades_table.setItem(
+                    row,
+                    column,
+                    item
+                )
+
+    # =====================================================
+    # REFRESH DASHBOARD
+    # =====================================================
+
     def refresh_dashboard(self):
+
         try:
+
             stats = get_trade_statistics()
 
             drawdown = get_drawdown_statistics()
 
             risk = get_risk_management_statistics()
+
+            # PERFORMANCE
+
+            self.stat_labels["total_trades"].setText(
+                str(stats["total_trades"])
+            )
+
+            self.stat_labels["net_pnl"].setText(
+                f"₹{stats['net_pnl']:,.2f}"
+            )
+
+            self.stat_labels["win_rate"].setText(
+                f"{stats['win_rate']:.1f}%"
+            )
+
+            self.stat_labels["open_trades"].setText(
+                str(stats["open_trades"])
+            )
+
+            # P&L COLOR
+
+            pnl_color = (
+                "#22C55E"
+                if stats["net_pnl"] >= 0
+                else "#EF4444"
+            )
+
+            self.stat_labels["net_pnl"].setStyleSheet(
+                f"color: {pnl_color};"
+            )
+
+            # DRAWDOWN
+
+            self.drawdown_labels["peak_equity"].setText(
+                f"₹{drawdown['peak_equity']:,.2f}"
+            )
+
+            self.drawdown_labels["current_drawdown"].setText(
+                f"₹{drawdown['current_drawdown']:,.2f}"
+            )
+
+            self.drawdown_labels["max_drawdown"].setText(
+                f"₹{drawdown['max_drawdown']:,.2f}"
+            )
+
+            self.drawdown_labels["max_drawdown_percent"].setText(
+                f"{drawdown['max_drawdown_percent']:.2f}%"
+            )
+
+            # RISK MANAGEMENT
 
             self.risk_labels["average_risk_reward"].setText(
                 f"{risk['average_risk_reward']:.2f} R"
@@ -706,108 +1146,125 @@ class TradeWiseApp(QMainWindow):
                 str(risk["consecutive_losses"])
             )
 
-            self.drawdown_labels["peak_equity"].setText(
-                f"₹{drawdown['peak_equity']:,.2f}"
-            )
-
-            self.drawdown_labels["current_drawdown"].setText(
-                f"₹{drawdown['current_drawdown']:,.2f}"
-            )
-
-            self.drawdown_labels["max_drawdown"].setText(
-                f"₹{drawdown['max_drawdown']:,.2f}"
-            )
-
-            self.drawdown_labels["max_drawdown_percent"].setText(
-                f"{drawdown['max_drawdown_percent']:.2f}%"
-            )
+            # EQUITY CURVE
 
             equity_data = get_equity_curve_data()
-            self.equity_chart.plot_data(equity_data)
-            self.equity_chart.setMinimumHeight(300)
-            self.equity_chart.setMaximumHeight(350)
 
-            self.stat_labels["total_trades"].setText(
-                str(stats["total_trades"])
+            self.equity_chart.plot_data(
+                equity_data
             )
-            self.stat_labels["net_pnl"].setText(
-                f"₹{stats['net_pnl']:,.2f}"
-            )
-            self.stat_labels["win_rate"].setText(
-                f"{stats['win_rate']:.1f}%"
-            )
-            self.stat_labels["open_trades"].setText(
-                str(stats["open_trades"])
-            )
+
+             # RECENT TRADES
+
+            self.load_recent_trades()
+
+            # ACTIVITY
 
             self.activity_description.setText(
-                f"Closed trades: {stats['closed_trades']}   |   "
-                f"Winning trades: {stats['winning_trades']}   |   "
-                f"Losing trades: {stats['losing_trades']}"
+                f"Closed Trades: {stats['closed_trades']}     |     "
+                f"Winning Trades: {stats['winning_trades']}     |     "
+                f"Losing Trades: {stats['losing_trades']}"
             )
 
         except Exception as error:
+
             self.activity_description.setText(
                 f"Dashboard statistics load nahi ho paayi: {error}"
             )
 
+    # =====================================================
+    # PAGE NAVIGATION
+    # =====================================================
+
     def select_page(self, page_name):
+
         self.page_title.setText(page_name)
 
-        for button in self.nav_buttons:
-            button.setChecked(button.text() == page_name)
+        for name, button in self.nav_buttons.items():
+
+            button.setChecked(
+                name == page_name
+            )
 
         if page_name == "Dashboard":
+
             self.pages.setCurrentIndex(0)
             self.refresh_dashboard()
 
         elif page_name == "Add Trade":
+
             self.pages.setCurrentIndex(1)
 
         elif page_name == "Trade Journal":
+
             self.pages.setCurrentIndex(2)
             self.trade_journal_page.load_trades()
 
         elif page_name == "Trading Calendar":
+
             self.pages.setCurrentIndex(3)
             self.trading_calendar_page.load_trades()
 
         elif page_name == "Performance Analytics":
+
             self.pages.setCurrentIndex(4)
             self.performance_analytics_page.load_analytics()
 
         elif page_name == "Trading Psychology":
+
             self.pages.setCurrentIndex(5)
             self.trading_psychology_page.load_psychology()
 
         elif page_name == "Strategy Analysis":
+
             self.pages.setCurrentIndex(6)
             self.strategy_analysis_page.load_strategy_data()
 
         elif page_name == "Mistake Journal":
+
             self.pages.setCurrentIndex(7)
 
         elif page_name == "Mistake Analytics":
+
             self.pages.setCurrentIndex(8)
             self.mistake_analytics_page.load_analytics()
 
+        elif page_name == "Reports & Export":
+
+            self.pages.setCurrentIndex(
+                self.reports_page_index
+            )
+
+            self.reports_page.generate_report()
+
         else:
+
             self.pages.setCurrentIndex(
                 self.placeholder_pages[page_name]
             )
 
 
+# =========================================================
+# APPLICATION ENTRY POINT
+# =========================================================
+
 def main():
+
     app = QApplication(sys.argv)
+
     app.setApplicationName("TradeWise")
-    app.setFont(QFont("Segoe UI", 10))
+
+    app.setFont(
+        QFont("Segoe UI", 10)
+    )
 
     window = TradeWiseApp()
+
     window.show()
 
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    main()
 
+    main()
