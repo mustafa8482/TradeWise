@@ -45,6 +45,7 @@ from services.trade_service import (
     get_risk_management_statistics,
     get_all_trades,
 )
+from ui.pages.settings_page import SettingsPage
 
 
 # =========================================================
@@ -72,6 +73,9 @@ class EquityCurveChart(FigureCanvasQTAgg):
             top=0.88,
             bottom=0.20
         )
+
+    def wheelEvent(self, event):
+        event.ignore()
 
     def plot_data(self, data):
 
@@ -669,6 +673,14 @@ class TradeWiseApp(QMainWindow):
             self.reports_page
         )
 
+        # SETTINGS & BACKUP
+
+        self.settings_page = SettingsPage()
+
+        self.settings_page_index = self.add_page_with_scroll(
+            self.settings_page
+        )
+
         # PLACEHOLDER PAGES
 
         implemented_pages = {
@@ -682,6 +694,7 @@ class TradeWiseApp(QMainWindow):
             "Mistake Journal",
             "Mistake Analytics",
             "Reports & Export",
+            "Settings & Backup",
         }
 
         for name in navigation_items:
@@ -1236,6 +1249,12 @@ class TradeWiseApp(QMainWindow):
             )
 
             self.reports_page.generate_report()
+
+        elif page_name == "Settings & Backup":
+
+            self.pages.setCurrentIndex(
+                self.settings_page_index
+            )
 
         else:
 
