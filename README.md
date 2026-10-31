@@ -1,71 +1,93 @@
 # 📊 TradeWise — Professional Trading Journal
 
-**Trade Smarter. Track Better. Improve Consistently.**
+### Trade Smarter. Track Better. Improve Consistently.
 
-TradeWise is a professional desktop-based trading journal application designed to help traders record their trades, analyze performance, understand trading psychology, evaluate strategies, and identify recurring mistakes.
+TradeWise is a professional Windows desktop trading journal built to help traders record their trades, analyze performance, understand trading psychology, evaluate strategies, and identify recurring mistakes.
 
-Built with Python, PySide6, and SQLite, TradeWise provides an organized workspace with performance analytics and visual insights to help traders make more informed decisions.
+Developed using **Python, PySide6, SQLite, and Matplotlib**, TradeWise provides a centralized workspace for trade management, performance analytics, risk analysis, and trading behavior tracking.
 
 ---
 
-## ✨ Key Features
+## ✨ Features
 
 ### 📈 Trade Management
 
 * Add and record trading activities.
 * Track entry price, exit price, quantity, and charges.
-* Calculate trade profit and loss.
-* Maintain a detailed trade history.
+* Calculate gross and net profit/loss.
+* Maintain detailed trade history.
+* Close and review open trades.
 
 ### 📊 Performance Analytics
 
-* Track total trades, winning trades, and losing trades.
-* Analyze win rate and profitability.
-* Visualize trading performance.
-* Monitor equity curve.
+* Total trades, winning trades, and losing trades.
+* Win rate and net P&L calculations.
+* Performance visualization.
+* Equity curve tracking.
+* Drawdown analysis.
+* Risk management statistics.
 
 ### 📅 Trading Calendar
 
 * View trading activity by date.
 * Track daily trading performance.
-* Review historical trading activity.
+* Review historical trades.
 
 ### 🧠 Trading Psychology
 
 * Track emotions during trading.
 * Understand emotional trading patterns.
-* Improve trading discipline.
+* Review trading discipline.
 
 ### 🎯 Strategy Analysis
 
 * Evaluate trading strategies.
-* Compare strategy performance.
-* Identify strategies that need improvement.
+* Analyze strategy performance.
+* Identify areas for improvement.
 
-### ⚠️ Mistake Journal
+### ⚠️ Mistake Journal & Analytics
 
 * Record trading mistakes.
-* Identify repeated mistakes.
-* Review mistakes to improve trading decisions.
+* Track mistake types and emotions.
+* Record financial impact.
+* Identify recurring mistakes.
+* Analyze mistakes through visual insights.
 
 ### 📉 Risk Management
 
 * Monitor risk-related statistics.
-* Track average risk and risk-reward performance.
 * Analyze winning and losing streaks.
-* Monitor drawdown.
+* Track drawdown.
+* Review risk and reward performance.
+
+### 📄 Reports & Export
+
+* Generate PDF reports.
+* Export trading records to Excel.
+* Review and maintain trading reports.
+
+### ⚙️ Settings & Backup
+
+* View database information.
+* Create database backups.
+* Restore database backups.
+* Validate backup integrity before restoration.
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Technology   | Purpose                       |
-| ------------ | ----------------------------- |
-| Python       | Core Programming Language     |
-| PySide6      | Desktop Application UI        |
-| SQLite       | Database Management           |
-| Matplotlib   | Charts and Data Visualization |
-| Git & GitHub | Version Control               |
+| Technology     | Purpose                          |
+| -------------- | -------------------------------- |
+| Python         | Core programming language        |
+| PySide6        | Desktop graphical user interface |
+| SQLite         | Database management              |
+| Matplotlib     | Charts and data visualization    |
+| Pandas / NumPy | Data processing and calculations |
+| ReportLab      | PDF report generation            |
+| OpenPyXL       | Excel export                     |
+| PyInstaller    | Windows executable generation    |
+| Git & GitHub   | Version control                  |
 
 ---
 
@@ -74,14 +96,22 @@ Built with Python, PySide6, and SQLite, TradeWise provides an organized workspac
 ```text
 TradeWise/
 │
+├── assets/
+├── backups/
+├── calculations/
+├── config/
 ├── database/
 │   └── connection.py
 │
+├── exports/
+├── imports/
 ├── models/
 │   └── trade.py
 │
 ├── services/
 │   └── trade_service.py
+│
+├── tests/
 │
 ├── ui/
 │   └── pages/
@@ -92,7 +122,9 @@ TradeWise/
 │       ├── trading_psychology_page.py
 │       ├── strategy_analysis_page.py
 │       ├── mistake_journal_page.py
-│       └── mistake_analytics_page.py
+│       ├── mistake_analytics_page.py
+│       ├── reports_page.py
+│       └── settings_page.py
 │
 ├── main.py
 ├── README.md
@@ -106,7 +138,7 @@ TradeWise/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/mustafa8482/TradeWise
+git clone https://github.com/mustafa8482/TradeWise.git
 ```
 
 ### 2. Navigate to Project Folder
@@ -115,7 +147,7 @@ git clone https://github.com/mustafa8482/TradeWise
 cd TradeWise
 ```
 
-### 3. Create Virtual Environment
+### 3. Create a Virtual Environment
 
 ```bash
 python -m venv .venv
@@ -126,13 +158,13 @@ python -m venv .venv
 **Windows PowerShell:**
 
 ```powershell
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 ```
 
 ### 5. Install Dependencies
 
 ```bash
-pip install PySide6 matplotlib
+python -m pip install PySide6 matplotlib pandas numpy reportlab openpyxl platformdirs
 ```
 
 Install any additional dependencies required by the project.
@@ -142,23 +174,59 @@ Install any additional dependencies required by the project.
 ```bash
 python main.py
 ```
+
+---
+
+## 📦 Build Windows EXE
+
+TradeWise supports Windows executable generation using PyInstaller.
+
+### Install PyInstaller
+
+```bash
+python -m pip install pyinstaller
+```
+
+### Build the Application
+
+```bash
+pyinstaller --noconfirm --clean --windowed --name TradeWise main.py
+```
+
+After successful compilation, the executable will be available inside:
+
+```text
+dist/
+└── TradeWise/
+    ├── TradeWise.exe
+    └── Required application files
+```
+
+**Note:** Share the complete `TradeWise` folder rather than copying only the EXE file.
+
 ---
 
 ## 🚀 Future Improvements
 
-* Interactive equity curve and advanced performance charts.
-* Advanced trading statistics.
+* Interactive equity curve and advanced chart customization.
+* More advanced trading performance metrics.
 * Detailed risk and reward analysis.
-* PDF and Excel report generation.
-* Trade import and export functionality.
-* Automated backup and restore.
-* Improved dashboard UI and user experience.
+* Improved user interface and experience.
+* Additional broker data import integrations.
+* Advanced reporting and analytics.
 
 ---
 
 ## 🎯 Project Goal
 
-The goal of TradeWise is to help traders develop consistency, maintain discipline, understand their trading behavior, and improve their decision-making through structured trade records and performance analysis.
+The goal of TradeWise is to help traders:
+
+* Maintain structured trading records.
+* Understand their trading performance.
+* Develop better trading discipline.
+* Identify recurring trading mistakes.
+* Evaluate strategies using historical data.
+* Make more informed trading decisions.
 
 **TradeWise is a trading journal and analytics tool, not a trading signal or guaranteed-profit system.**
 
@@ -169,6 +237,7 @@ The goal of TradeWise is to help traders develop consistency, maintain disciplin
 **Golam Mostafa Sekh**
 
 * GitHub: https://github.com/mustafa8482
+* Project Repository: https://github.com/mustafa8482/TradeWise
 
 ---
 
